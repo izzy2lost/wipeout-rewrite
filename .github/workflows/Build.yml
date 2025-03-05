@@ -14,99 +14,55 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest  # UWP requires Windows for final packaging
+    timeout-minutes: 60
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Set up Emscripten
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake build-essential python3
-          git clone https://github.com/emscripten-core/emsdk.git
-          cd emsdk
-          ./emsdk install latest
-          ./emsdk activate latest
-
-      - name: Build WebAssembly version
-        run: |
-          source ./emsdk/emsdk_env.sh  # Now correctly relative to root directory
-          make wasm
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
 
-      - name: Install dependencies
-        run: npm install
+      # Initialize project and install dependencies
+      - name: Initialize project
+        run: |
+          npm init -y
+          npm install @mattlewis18/capacitor-xbox
+          npm install https://github.com/momo-AUX1/UWP.js
+          npm install @capacitor/cli @capacitor/core --save-dev
 
-      - name: Install Capacitor CLI
-        run: npm install -g @capacitor/cli
+      # Initialize Capacitor after dependencies are installed
+      - name: Initialize Capacitor
+        run: npx cap init --web-dir www
 
+      # Add UWP platform
       - name: Add UWP platform
         run: npx cap add windows
 
-      - name: Install UWP.js
-        run: npm install UWP.js
+      # WebAssembly build steps (if needed)
+      - name: Set up Emscripten
+        if: contains(build.os, 'windows')
+        run: |
+          choco install cmake python3
+          git clone https://github.com/emscripten-core/emsdk.git
+          cd emsdk
+          emsdk install latest
+          emsdk activate latest
 
+      - name: Build WebAssembly
+        run: |
+          cd emsdk
+          emsdk_env.bat
+          make wasm
+
+      # UWP packaging steps
       - name: Sync Capacitor project
         run: npx cap sync windows
 
-      - name: Generate Self-Signed Certificate
-        id: generate_cert
-        run: |
-          $cert = New-SelfSignedCertificate -CertStoreLocation "Cert:\CurrentUser\My" -Subject "CN=MyUWPCert" -KeyAlgorithm RSA -KeyLength 2048 -Provider "Microsoft Enhanced RSA and AES Cryptographic Provider" -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears(1) -Type CodeSigningCert
-          echo "THUMBPRINT=$($cert.Thumbprint)" >> $env:GITHUB_ENV
-        shell: pwsh
-
-      - name: Set Package Name
-        id: set_package_name
-        run: |
-          echo "PACKAGE_NAME=${{ github.event.inputs.package_name }}_${{ github.event.inputs.tag_name }}" >> $GITHUB_ENV
-
-      - name: Build UWP project (MSIX for sideloading)
+      - name: Build UWP package
         run: |
           cd windows/App
-          msbuild /p:Configuration=Release /p:Platform=x64 /p:AppxBundle=Never /p:PackageCertificateThumbprint="${{ env.THUMBPRINT }}" /p:AppxPackageSigningEnabled=true /p:AppxPackageDir=../output/
-        shell: pwsh
-
-      - name: Clean the Package
-        run: |
-          $PackagePath = "windows/output/${{ env.PACKAGE_NAME }}"
-          if (Test-Path $PackagePath) {
-            Write-Host "Cleaning package directory: $PackagePath"
-            Remove-Item -Recurse -path "$PackagePath\Add-AppDevPackage.resources" -ErrorAction SilentlyContinue
-            Remove-Item -Recurse -path "$PackagePath\TelemetryDependencies" -ErrorAction SilentlyContinue
-            Remove-Item -Recurse -path "$PackagePath\Dependencies\arm" -ErrorAction SilentlyContinue
-            Remove-Item -Recurse -path "$PackagePath\Dependencies\arm64" -ErrorAction SilentlyContinue
-            Remove-Item -Recurse -path "$PackagePath\Dependencies\x86" -ErrorAction SilentlyContinue
-            Remove-Item -Recurse -path "$PackagePath\Dependencies\Win32" -ErrorAction SilentlyContinue
-            Remove-Item -path "$PackagePath\Add-AppDevPackage.ps1" -ErrorAction SilentlyContinue
-            Remove-Item -Recurse -path "$PackagePath\Install.ps1" -ErrorAction SilentlyContinue
-          } else {
-            Write-Host "Package path does not exist: $PackagePath"
-            exit 1
-          }
-        shell: pwsh
-
-      - name: Create Archive
-        run: |
-          $PackagePath = "windows/output/${{ env.PACKAGE_NAME }}"
-          if (Test-Path $PackagePath) {
-            Write-Host "Creating archive for: $PackagePath"
-            Compress-Archive -Path "$PackagePath\*" -DestinationPath "windows/output/${{ env.PACKAGE_NAME }}.zip"
-            Write-Host "Contents of package output directory after archiving:"
-            Get-ChildItem -Path "windows/output" -Recurse
-          } else {
-            Write-Host "Package path does not exist for archiving: $PackagePath"
-            exit 1
-          }
-        shell: pwsh
-
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ github.event.inputs.package_name }} Build
-          path: windows/output/${{ env.PACKAGE_NAME }}.zip
+          msbuild /p:Configuration=Release /p:Platform=x64 /p:AppxBundle=Never
