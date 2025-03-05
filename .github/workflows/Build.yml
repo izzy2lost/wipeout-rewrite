@@ -14,20 +14,28 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest  # Using Ubuntu for Emscripten setup
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Emscripten
-        uses: emscripten/emsdk@v2
-        with:
-          emsdk_version: "latest"  # Use the latest version of Emscripten
-          
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential python3
+          git clone https://github.com/emscripten-core/emsdk.git
+          cd emsdk
+          ./emsdk install latest
+          ./emsdk activate latest
+          source ./emsdk_env.sh
+        shell: bash
+
       - name: Build WebAssembly version
         run: |
-          emcc -o build/index.js src/main.cpp  # Update with your actual Emscripten build command
+          source ./emsdk_env.sh  # Make sure the environment is set up
+          make wasm  # This will execute the make wasm command in your repository
+        working-directory: ./  # Make sure you are in the correct directory for your project
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
