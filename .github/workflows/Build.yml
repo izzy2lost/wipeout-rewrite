@@ -28,7 +28,7 @@ jobs:
           cd emsdk
           ./emsdk install latest
           ./emsdk activate latest
-          source ./emsdk_env.sh
+          source emsdk_env.sh  # Corrected to use the proper path
         shell: bash
 
       - name: Build WebAssembly version
