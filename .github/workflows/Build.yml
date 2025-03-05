@@ -14,7 +14,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest  # Using Ubuntu for Emscripten setup
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
@@ -28,14 +28,11 @@ jobs:
           cd emsdk
           ./emsdk install latest
           ./emsdk activate latest
-          source /home/runner/work/wipeout-rewrite/wipeout-rewrite/emsdk/emsdk_env.sh  # Source script from the correct path
-        shell: bash
 
       - name: Build WebAssembly version
         run: |
-          source ./emsdk_env.sh  # Make sure the environment is set up
-          make wasm  # This will execute the make wasm command in your repository
-        working-directory: ./  # Make sure you are in the correct directory for your project
+          source ./emsdk/emsdk_env.sh  # Now correctly relative to root directory
+          make wasm
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
