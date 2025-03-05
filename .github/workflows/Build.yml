@@ -20,6 +20,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Emscripten
+        uses: emscripten/emsdk@v2
+        with:
+          emsdk_version: "latest"  # Use the latest version of Emscripten
+          
+      - name: Build WebAssembly version
+        run: |
+          emcc -o build/index.js src/main.cpp  # Update with your actual Emscripten build command
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -27,9 +36,6 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-
-      - name: Build web version
-        run: npm run build
 
       - name: Install Capacitor CLI
         run: npm install -g @capacitor/cli
