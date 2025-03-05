@@ -1,0 +1,101 @@
+name: Build Wipeout Rewrite UWP
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_name:
+        description: 'Package Name'
+        required: true
+        default: 'wipeout-rewrite-uwp'
+      tag_name:
+        description: 'Tag Name'
+        required: true
+        default: 'latest'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build web version
+        run: npm run build
+
+      - name: Install Capacitor CLI
+        run: npm install -g @capacitor/cli
+
+      - name: Add UWP platform
+        run: npx cap add windows
+
+      - name: Install UWP.js
+        run: npm install UWP.js
+
+      - name: Sync Capacitor project
+        run: npx cap sync windows
+
+      - name: Generate Self-Signed Certificate
+        id: generate_cert
+        run: |
+          $cert = New-SelfSignedCertificate -CertStoreLocation "Cert:\CurrentUser\My" -Subject "CN=MyUWPCert" -KeyAlgorithm RSA -KeyLength 2048 -Provider "Microsoft Enhanced RSA and AES Cryptographic Provider" -KeyExportPolicy Exportable -NotAfter (Get-Date).AddYears(1) -Type CodeSigningCert
+          echo "THUMBPRINT=$($cert.Thumbprint)" >> $env:GITHUB_ENV
+        shell: pwsh
+
+      - name: Set Package Name
+        id: set_package_name
+        run: |
+          echo "PACKAGE_NAME=${{ github.event.inputs.package_name }}_${{ github.event.inputs.tag_name }}" >> $GITHUB_ENV
+
+      - name: Build UWP project (MSIX for sideloading)
+        run: |
+          cd windows/App
+          msbuild /p:Configuration=Release /p:Platform=x64 /p:AppxBundle=Never /p:PackageCertificateThumbprint="${{ env.THUMBPRINT }}" /p:AppxPackageSigningEnabled=true /p:AppxPackageDir=../output/
+        shell: pwsh
+
+      - name: Clean the Package
+        run: |
+          $PackagePath = "windows/output/${{ env.PACKAGE_NAME }}"
+          if (Test-Path $PackagePath) {
+            Write-Host "Cleaning package directory: $PackagePath"
+            Remove-Item -Recurse -path "$PackagePath\Add-AppDevPackage.resources" -ErrorAction SilentlyContinue
+            Remove-Item -Recurse -path "$PackagePath\TelemetryDependencies" -ErrorAction SilentlyContinue
+            Remove-Item -Recurse -path "$PackagePath\Dependencies\arm" -ErrorAction SilentlyContinue
+            Remove-Item -Recurse -path "$PackagePath\Dependencies\arm64" -ErrorAction SilentlyContinue
+            Remove-Item -Recurse -path "$PackagePath\Dependencies\x86" -ErrorAction SilentlyContinue
+            Remove-Item -Recurse -path "$PackagePath\Dependencies\Win32" -ErrorAction SilentlyContinue
+            Remove-Item -path "$PackagePath\Add-AppDevPackage.ps1" -ErrorAction SilentlyContinue
+            Remove-Item -Recurse -path "$PackagePath\Install.ps1" -ErrorAction SilentlyContinue
+          } else {
+            Write-Host "Package path does not exist: $PackagePath"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Create Archive
+        run: |
+          $PackagePath = "windows/output/${{ env.PACKAGE_NAME }}"
+          if (Test-Path $PackagePath) {
+            Write-Host "Creating archive for: $PackagePath"
+            Compress-Archive -Path "$PackagePath\*" -DestinationPath "windows/output/${{ env.PACKAGE_NAME }}.zip"
+            Write-Host "Contents of package output directory after archiving:"
+            Get-ChildItem -Path "windows/output" -Recurse
+          } else {
+            Write-Host "Package path does not exist for archiving: $PackagePath"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.inputs.package_name }} Build
+          path: windows/output/${{ env.PACKAGE_NAME }}.zip
