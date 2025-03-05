@@ -28,7 +28,7 @@ jobs:
           cd emsdk
           ./emsdk install latest
           ./emsdk activate latest
-          source emsdk_env.sh  # Corrected to use the proper path
+          source /home/runner/work/wipeout-rewrite/wipeout-rewrite/emsdk/emsdk_env.sh  # Correct full path to the emsdk_env.sh script
         shell: bash
 
       - name: Build WebAssembly version
